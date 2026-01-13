@@ -1,0 +1,5 @@
+PATH=$PATH:/opt/arm/bin
+export PATH
+make clean
+make
+/opt/arm/stm32/ocd/qfn4

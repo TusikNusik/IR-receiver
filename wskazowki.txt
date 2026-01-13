@@ -1,0 +1,18 @@
+wyjscie odbiornika typu otwarty dren, czyli trzeba podłaczyć do wejscia GPIO z właczonym
+rezystorem podłaczajacym przy konfiguracji programu.
+
+Strona do sprawdzenia protokołow pilota do telewizora: https://lirc.sourceforge.net/remotes/samsung/
+Ogólnie jest to lirc.
+Trzeba sprawdzić w jaki sposób ten pilot wysyła sygnały.
+
+Muszę odpowiednia nożke do ktorej jest podłaczony odbiornik skonfigurować.
+
+Przerwanie beda wyzwalane zboczem opadajacym. Jezeli dostaje przerwanie a wiem ile protokół np. Sony 
+transmituje jedynke a ile 0, to odmierzam powiedzmy 7ms i jezeli trafie na stan wysoki to wiem ze 1, a
+jezeli trafie na stan niski to wiem że 0 i tyle.
+
+1. Skonfigurowac tak jak z guzikami nozke na ktorej jest podloczony aby otrzymywała przerwania.
+2. Sprawdzić jak pilot z domu wygląda, jakiej jest firmy i jakiego protokołu korzysta.
+3. Na podstawie protokołu i wiedzy przesylania bitów odebrać wiadomości i zapalac odpowiednie diody
+(pilot przeciez ma rozne ikonki i troche inny sygnal wysylaja)
+4. gdy to zrobie zastanowić się nad zagłuszeniami sygnału.
