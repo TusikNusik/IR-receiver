@@ -3,3 +3,5 @@ export PATH
 make clean
 make
 /opt/arm/stm32/ocd/qfn4
+
+/opt/arm/stm32/ocd/qfn4_slow.sh
