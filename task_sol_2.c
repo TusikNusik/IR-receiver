@@ -223,74 +223,6 @@ void pop_front_x_bytes(cyclic_buffer* c, unsigned pop_n) {
     }
 }
 
-void left_pressed(cyclic_buffer* c) {
-    if((LEFT_BTN_GPIO->IDR >> LEFT_BTN_PIN) & 1) {
-        push_back(c, "LEFT RELEASED\r\n");
-    }
-    else {
-        push_back(c, "LEFT PRESSED\r\n");
-    }
-}
-
-void right_pressed(cyclic_buffer* c) {
-    if((RIGHT_BTN_GPIO->IDR >> RIGHT_BTN_PIN) & 1) {
-        push_back(c, "RIGHT RELEASED\r\n");
-    }
-    else {
-        push_back(c, "RIGHT PRESSED\r\n");
-    }
-}
-
-void up_pressed(cyclic_buffer* c) {
-    if((UP_BTN_GPIO->IDR >> UP_BTN_PIN) & 1) {
-        push_back(c, "UP RELEASED\r\n");
-    }
-    else {
-        push_back(c, "UP PRESSED\r\n");
-    }
-}
-
-void down_pressed(cyclic_buffer* c) {
-    if((DOWN_BTN_GPIO->IDR >> DOWN_BTN_PIN) & 1) {
-        push_back(c, "DOWN RELEASED\r\n");
-    }
-    else {
-        push_back(c, "DOWN PRESSED\r\n");
-    }
-  
-}
-
-void action_pressed(cyclic_buffer* c) {
-    if((ACTION_BTN_GPIO->IDR >> ACTION_BTN_PIN) & 1) {
-        push_back(c, "FIRE RELEASED\r\n");
-    }
-    else {
-        push_back(c, "FIRE PRESSEDD\r\n");
-    }
-}
-
-void user_pressed(cyclic_buffer* c) {
-    if((USER_BTN_GPIO->IDR >> USER_BTN_PIN) & 1) {
-        push_back(c, "USER RELEASED\r\n");
-    }
-    else {
-        push_back(c, "USER PRESSED\r\n");
-    }
-}
-
-void mode_pressed(cyclic_buffer* c) {
-    if(!((AT_BTN_GPIO->IDR >> AT_BTN_PIN) & 1)) {
-        push_back(c, "MODE RELEASED\r\n");
-    }
-    else {
-        push_back(c, "MODE PRESSED\r\n");
-    }
-}
-
-void sygnal_received(cyclic_buffer* c) {
-    push_back(c, "SIGNAL RECEIVED\r\n");
-}
-
 void send_message(cyclic_buffer* c) {
     DMA1_Stream6->M0AR = (uint32_t)get_tail(c);
     DMA1_Stream6->NDTR = get_first_message_length(c);
@@ -298,14 +230,12 @@ void send_message(cyclic_buffer* c) {
     
 }
 
-// Funkcja ta wywołuje się asynchronicznie w stosunku do mojego programu, nie mogą jej wywoływać.
-// Funkcja ta wywoluje sie gdy nastepuje przerwanie.
 void DMA1_Stream6_IRQHandler() { 
-    uint32_t isr = DMA1->HISR;          // Interrupt Status Register, ustawiony na 1 jeżeli przesłanie zakończyło się sukcesem
+    uint32_t isr = DMA1->HISR;         
     if (isr & DMA_HISR_TCIF6) {
         pop_front_x_bytes(&c, get_first_message_length(&c));
 
-        DMA1->HIFCR = DMA_HIFCR_CTCIF6;         //Interrput Fluck Clear Register -> zeruje HISR.
+        DMA1->HIFCR = DMA_HIFCR_CTCIF6;
         
         if(!is_empty(&c)) {
             send_message(&c);
@@ -314,37 +244,9 @@ void DMA1_Stream6_IRQHandler() {
 }
 
 void check_if_available() {
-    // ten warunek sprawdać gdy przycisk zgłasza przerwania i jeżeli DMA nie jest zajęte to od razu
-    // dajemy do DMA a w.p.p kolejkujemy.
     if((DMA1_Stream6->CR & DMA_SxCR_EN) == 0 && (DMA1->HISR & DMA_HISR_TCIF6) == 0) {
         send_message(&c);
     }
-}
-
-
-void EXTI3_IRQHandler(void) {
-    EXTI->PR = EXTI_PR_PR3;
-    left_pressed(&c);
-    check_if_available();
-}
-
-void EXTI4_IRQHandler(void) {
-    EXTI->PR = EXTI_PR_PR4;
-    right_pressed(&c);
-    check_if_available();
-}
-
-void EXTI9_5_IRQHandler(void) {
-    if(EXTI->PR & EXTI_PR_PR5) {
-        EXTI->PR = EXTI_PR_PR5;
-        up_pressed(&c);
-    }
-    else {
-        EXTI->PR = EXTI_PR_PR6;
-        down_pressed(&c);
-    }
-
-    check_if_available();
 }
 
 char* decode_int_16(char *p, uint16_t v)
@@ -435,8 +337,6 @@ void EXTI15_10_IRQHandler(void) {
         }
     }
 }
-
-uint16_t red_diod_brightness = 500;
 
 void handle_command(uint8_t command) {
     if(command == ONE_BUTTON) {
