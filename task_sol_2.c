@@ -61,6 +61,7 @@
 #define ONE_MILISECOND_TIMER 15999
 #define TEN_MICROSECONDS_TIMER 159
 #define NINETY_MILISECONDS_ARR 90
+#define ONE_SECOND 250
 // ------------------ Diody ------------------
 
 #define RED_LED_GPIO GPIOA
@@ -249,21 +250,145 @@ void check_if_available() {
     }
 }
 
+void unknown_command(cyclic_buffer* c) {
+    push_back(c, "UNKNOWN COMMAND!\r\n");
+}
+
 char* decode_int_16(char *p, uint16_t v)
 {
     char tmp[6];
     int i = 0;
 
     do {
-        tmp[i++] = '0' + (v % 10);
+        tmp[i] = '0' + (v % 10);
+        i++;
         v /= 10;
-    } while (v);
+    } while(v);
 
-    while (i--)
+    i--;
+
+    while(i >= 0) {
         *p++ = tmp[i];
+        i--;
+    }
 
     return p;
 }
+
+bool prevent_multiple_clicks(uint32_t last_command_time) {
+    uint32_t difference = (uint32_t)(TIM2->CNT - last_command_time);
+    if(difference > ONE_SECOND) {
+        return false;
+    }
+    return true;
+}
+
+void handle_command(uint8_t command, uint8_t last_command, uint32_t last_command_time) {
+
+    switch (command) {
+        uint16_t current_brightness;
+        case ONE_BUTTON:
+            if((prevent_multiple_clicks(last_command_time) && last_command == command)) {
+                break;
+            }
+
+            if(TIM3->CCR1 < RED_START_BRIGHTNESS)    TIM3->CCR1 = RED_MAX_BRIGHTNESS;
+            else    TIM3->CCR1 = RED_MIN_BRIGHTNESS;
+            break;
+
+        case TWO_BUTTON:
+            if((prevent_multiple_clicks(last_command_time) && last_command == command)) {
+                break;
+            }
+
+            if(TIM3->CCR3 < BLUE_START_BRIGHTNESS)    TIM3->CCR3 = BLUE_MAX_BRIGHTNESS;
+            else    TIM3->CCR3 = BLUE_MIN_BRIGHTNESS;
+            break;
+
+        case THREE_BUTTON:
+            if((prevent_multiple_clicks(last_command_time) && last_command == command)) {
+                break;
+            }
+            if(GREEN2_LED_GPIO->IDR & (1 << (GREEN2_LED_PIN)))    Green2LEDoff();
+            else    Green2LEDon();
+            break;
+
+        case FOUR_BUTTON:
+            if((prevent_multiple_clicks(last_command_time) && last_command == command)) {
+                break;
+            }
+            if(TIM3->CCR2 < GREEN_START_BRIGHTNESS)    TIM3->CCR2 = GREEN_MAX_BRIGHTNESS;
+            else    TIM3->CCR2 = GREEN_MIN_BRIGHTNESS;
+            break;
+
+        case UP_VOLUME_BUTTON:
+            current_brightness = TIM3->CCR1;
+            if(current_brightness <= 989)   current_brightness += 10;
+            TIM3->CCR1 = current_brightness;
+            break;
+
+        case DOWN_VOLUME_BUTTON:
+            current_brightness = TIM3->CCR1;
+            if(current_brightness >= 10)    current_brightness -= 10;
+            TIM3->CCR1 = current_brightness;
+            break;
+        
+        case UP_CHANNEL_BUTTON:
+            current_brightness = TIM3->CCR2;
+            if(current_brightness <= 989)   current_brightness += 10;
+            TIM3->CCR2 = current_brightness;
+            break;
+        
+        case DOWN_CHANNEL_BUTTON:
+            current_brightness = TIM3->CCR2;
+            if(current_brightness >= 10)    current_brightness -= 10;
+            TIM3->CCR2 = current_brightness;
+            break;
+
+        case UP_BUTTON:
+            current_brightness = TIM3->CCR3;
+            if(current_brightness <= 989)   current_brightness += 10;
+            TIM3->CCR3 = current_brightness;
+            break;
+
+        case DOWN_BUTTON:
+            current_brightness = TIM3->CCR3;
+            if(current_brightness >= 10)    current_brightness -= 10;
+            TIM3->CCR3 = current_brightness;
+            break;
+
+        default:
+            unknown_command(&c);
+            check_if_available();
+            break;
+    }
+}
+
+
+uint8_t last_command = 127;
+uint32_t last_time = 0;
+
+void process_SIRC_signal(uint8_t string_frame) {
+    uint8_t command = string_frame & 0x7F;          
+    uint8_t address = (string_frame >> 7) & 0x1F;
+    handle_command(command, last_command, last_time);
+
+    char tx_buf[32];
+    char *p = tx_buf;
+
+    *p++ = 'C'; *p++ = 'M'; *p++ = 'D'; *p++ = '=';
+    p = decode_int_16(p, command);
+    *p++ = ' ';
+    *p++ = 'A'; *p++ = 'D'; *p++ = 'D'; *p++ = 'R'; *p++ = '=';
+    p = decode_int_16(p, address);
+    *p++ = '\r'; *p++ = '\n'; *p = '\0';
+    
+    push_back(&c, tx_buf);
+    check_if_available();
+    last_command = command;
+    last_time = TIM2->CNT;
+}
+
 
 // Mierzę czasy zbocza opadającego, ile ono trwało, czyli fragmenty między dwoma sąsiednimi stanami wysokimi.
 // Mierzę także czas całego "bit bloku", czyli czas między kolejnymi zboczami opadającymi.
@@ -288,7 +413,7 @@ void EXTI15_10_IRQHandler(void) {
         EXTI->PR = EXTI_PR_PR14; // Wyczyszczenie flagi przerwania
 
         // Przerwanie wywołane zboczem opadającym.
-        if (!((RECEIVER_GPIO->IDR & (1 << RECEIVER_PIN)))) {
+        if(!((RECEIVER_GPIO->IDR & (1 << RECEIVER_PIN)))) {
             // Początek transmisji, pierwszy stan niski.
             if(!transmission_started && last_low_state_time == 0) {
                 last_low_state_time = TIM4->CNT;
@@ -333,81 +458,18 @@ void EXTI15_10_IRQHandler(void) {
                 string_frame = frame;
                 data_ready = true;
                 reset_values();
+                process_SIRC_signal(string_frame);
             }
         }
     }
 }
-
-void handle_command(uint8_t command) {
-    if(command == ONE_BUTTON) {
-        if(RED_LED_GPIO->IDR & (1 << (RED_LED_PIN)))    TIM3->CCR1 = RED_MAX_BRIGHTNESS;
-        else    TIM3->CCR1 = RED_MIN_BRIGHTNESS;
-    }
-    else if(command == TWO_BUTTON) {
-        if(BLUE_LED_GPIO->IDR & (1 << (BLUE_LED_PIN)))    TIM3->CCR3 = BLUE_MAX_BRIGHTNESS;
-        else    TIM3->CCR3 = BLUE_MIN_BRIGHTNESS;
-    }
-    else if(command == THREE_BUTTON) {
-        if(GREEN2_LED_GPIO->IDR & (1 << (GREEN2_LED_PIN)))    Green2LEDoff();
-        else    Green2LEDon();
-    }
-    else if(command == FOUR_BUTTON) {
-        if(GREEN_LED_GPIO->IDR & (1 << (GREEN_LED_PIN)))    TIM3->CCR2 = GREEN_MAX_BRIGHTNESS;
-        else    TIM3->CCR2 = GREEN_MIN_BRIGHTNESS;;
-    }
-    else if(command == UP_VOLUME_BUTTON) {
-        uint16_t current_brightness = TIM3->CCR1;
-        if(current_brightness <= 989) {
-            current_brightness += 10;
-            TIM3->CCR1 = current_brightness;
-        }
-    }
-    else if(command == DOWN_VOLUME_BUTTON) {
-        uint16_t current_brightness = TIM3->CCR1;
-        if(current_brightness >= 10) {
-            current_brightness -= 10;
-            TIM3->CCR1 = current_brightness;
-        }
-    }
-    else if(command == UP_CHANNEL_BUTTON) {
-        uint16_t current_brightness = TIM3->CCR2;
-        if(current_brightness <= 989) {
-            current_brightness += 10;
-            TIM3->CCR2 = current_brightness;
-        }
-    }
-    else if(command == DOWN_CHANNEL_BUTTON) {
-        uint16_t current_brightness = TIM3->CCR2;
-        if(current_brightness >= 10) {
-            current_brightness -= 10;
-            TIM3->CCR2 = current_brightness;
-        }
-    }
-    else if(command == UP_BUTTON) {
-        uint16_t current_brightness = TIM3->CCR3;
-        if(current_brightness <= 989) {
-            current_brightness += 10;
-            TIM3->CCR3 = current_brightness;
-        }
-    }
-    else if(command == DOWN_BUTTON) {
-        uint16_t current_brightness = TIM3->CCR3;
-        if(current_brightness >= 10) {
-            current_brightness -= 10;
-            TIM3->CCR3 = current_brightness;
-        }
-    }
-}
-
-// TIMER3 jest do sterowania kolorów diod, timer2 nie ma połączenia na płytce, czyli muszę zmienić TIMER3 -> TIMER2  tak
-// aby TIMER2 albo 4 zajmował się SIRC a TIMER3 diodami.
 
 int main() {
 
     init(&c);
 
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN |
-    RCC_AHB1ENR_GPIOBEN | RCC_AHB1ENR_GPIOCEN | RCC_AHB1ENR_DMA1EN;
+    RCC_AHB1ENR_GPIOBEN | RCC_AHB1ENR_DMA1EN;
 
     RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
 
@@ -417,6 +479,8 @@ int main() {
     // Włączenie taktowania licznika.
     RCC->APB1ENR |= RCC_APB1ENR_TIM4EN;
     RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
+    RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+    
 
     __NOP();
     RedLEDoff();
@@ -447,7 +511,6 @@ int main() {
         GPIO_OType_PP,
         GPIO_Low_Speed,
         GPIO_PuPd_NOPULL);
-
 
     GPIOafConfigure(GPIOA,
         2,
@@ -486,15 +549,9 @@ int main() {
         GPIO_PuPd_NOPULL, 
         GPIO_AF_TIM3);
     
-
-    // Trzeba skonfigurować przerwania dla odpowiedniego układu i linii na które jest guzik.
-    // Co jeżeli zrobię najpierw falling a potem Rising?
+    
     GPIOinConfigure(RECEIVER_GPIO, RECEIVER_PIN, GPIO_PuPd_UP, EXTI_Mode_Interrupt, EXTI_Trigger_Rising_Falling);
-    GPIOinConfigure(LEFT_BTN_GPIO, LEFT_BTN_PIN, GPIO_PuPd_UP, EXTI_Mode_Interrupt, EXTI_Trigger_Rising_Falling);
-    GPIOinConfigure(RIGHT_BTN_GPIO, RIGHT_BTN_PIN, GPIO_PuPd_UP, EXTI_Mode_Interrupt, EXTI_Trigger_Rising_Falling);
-    GPIOinConfigure(DOWN_BTN_GPIO, DOWN_BTN_PIN, GPIO_PuPd_UP, EXTI_Mode_Interrupt, EXTI_Trigger_Rising_Falling);
-    GPIOinConfigure(UP_BTN_GPIO, UP_BTN_PIN, GPIO_PuPd_UP, EXTI_Mode_Interrupt, EXTI_Trigger_Rising_Falling);
-
+    
     USART2->CR1 = USART_Mode_Rx_Tx | USART_WordLength_8b | USART_Parity_No;
     USART2->CR2 = USART_StopBits_1;
     USART2->CR3 = USART_CR3_DMAT | USART_CR3_DMAR;
@@ -523,10 +580,6 @@ int main() {
     NVIC_EnableIRQ(DMA1_Stream6_IRQn);
     NVIC_EnableIRQ(DMA1_Stream5_IRQn);
     NVIC_EnableIRQ(EXTI15_10_IRQn);
-    NVIC_EnableIRQ(EXTI3_IRQn);
-    NVIC_EnableIRQ(EXTI4_IRQn);
-    NVIC_EnableIRQ(EXTI9_5_IRQn);
-    
 
     USART2->CR1 |= USART_Enable;        // włączenie UARTU na koniec.
 
@@ -548,6 +601,14 @@ int main() {
     TIM3->CCR2 = BLUE_START_BRIGHTNESS;
     TIM3->CCR3 = GREEN_START_BRIGHTNESS;
 
+    // TIM2 -> timer który zapobiega wielokrotnym kliknięciom.
+    TIM2->PSC = ONE_MILISECOND_TIMER;
+    TIM2->ARR = 0xFFFFF;
+    TIM2->CR1 = 0;
+    TIM2->CNT = 0;
+    TIM2->EGR = TIM_EGR_UG;
+    TIM2->CR1 |= TIM_CR1_CEN;
+
     // konfigurują kanały wejściowe i wyjściowe ich liczba zależy od konkretnego licznika (po dwa kanały w rejestrze)
     TIM3->CCMR1 = (TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1PE) |
                   (TIM_CCMR1_OC2M_2 | TIM_CCMR1_OC2M_1 | TIM_CCMR1_OC2PE);
@@ -560,29 +621,7 @@ int main() {
                  (TIM_CCER_CC2E | TIM_CCER_CC2P) |   // Zielona dioda.
                  (TIM_CCER_CC3E | TIM_CCER_CC3P);   // Niebieska dioda.
 
-    TIM3->CR1 = TIM_CR1_ARPE | TIM_CR1_CEN; // włączenie zegaru
-
-    while(1) {
-        if(data_ready) {
-            uint8_t command = string_frame & 0x7F;          
-            uint8_t address = (string_frame >> 7) & 0x1F;
-            data_ready = false;
-            handle_command(command);
-
-            char tx_buf[32];
-            char *p = tx_buf;
-
-            *p++ = 'C'; *p++ = 'M'; *p++ = 'D'; *p++ = '=';
-            p = decode_int_16(p, command);
-            *p++ = ' ';
-            *p++ = 'A'; *p++ = 'D'; *p++ = 'D'; *p++ = 'R'; *p++ = '=';
-            p = decode_int_16(p, address);
-            *p++ = '\r'; *p++ = '\n'; *p = '\0';
-            
-            push_back(&c, tx_buf);
-            check_if_available();
-        }
-    }
+    TIM3->CR1 = TIM_CR1_ARPE | TIM_CR1_CEN;
 
     return 0;
 }
