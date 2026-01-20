@@ -293,8 +293,15 @@ void handle_command(uint8_t command, uint8_t last_command, uint32_t last_command
                 break;
             }
 
-            if(TIM3->CCR1 < RED_START_BRIGHTNESS)    TIM3->CCR1 = RED_MAX_BRIGHTNESS;
-            else    TIM3->CCR1 = RED_MIN_BRIGHTNESS;
+            if(TIM3->CCR1 < RED_START_BRIGHTNESS) {
+                TIM3->CCR1 = RED_MAX_BRIGHTNESS;
+                push_back(&c, "RED ACTIVATED\r\n");
+            }
+            else  {
+                TIM3->CCR1 = RED_MIN_BRIGHTNESS;
+                push_back(&c, "RED DEACTIVATED\r\n");
+            }
+            check_if_available();
             break;
 
         case TWO_BUTTON:
@@ -302,60 +309,93 @@ void handle_command(uint8_t command, uint8_t last_command, uint32_t last_command
                 break;
             }
 
-            if(TIM3->CCR3 < BLUE_START_BRIGHTNESS)    TIM3->CCR3 = BLUE_MAX_BRIGHTNESS;
-            else    TIM3->CCR3 = BLUE_MIN_BRIGHTNESS;
+            if(TIM3->CCR3 < BLUE_START_BRIGHTNESS) {    
+                TIM3->CCR3 = BLUE_MAX_BRIGHTNESS;
+                push_back(&c, "BLUE ACTIVATED\r\n");
+            }
+            else {
+                TIM3->CCR3 = BLUE_MIN_BRIGHTNESS;
+                push_back(&c, "BLUE DEACTIVATED\r\n");
+            }
+            check_if_available();
             break;
 
         case THREE_BUTTON:
             if((prevent_multiple_clicks(last_command_time) && last_command == command)) {
                 break;
             }
-            if(GREEN2_LED_GPIO->IDR & (1 << (GREEN2_LED_PIN)))    Green2LEDoff();
-            else    Green2LEDon();
+            if(GREEN2_LED_GPIO->IDR & (1 << (GREEN2_LED_PIN))) {   
+                Green2LEDoff();
+                push_back(&c, "GREEN2 DEACTIVATED\r\n");
+            }
+            else {  
+                Green2LEDon();
+                push_back(&c, "GREEN2 ACTIVATED\r\n");
+            }
+            check_if_available();
             break;
 
         case FOUR_BUTTON:
             if((prevent_multiple_clicks(last_command_time) && last_command == command)) {
                 break;
             }
-            if(TIM3->CCR2 < GREEN_START_BRIGHTNESS)    TIM3->CCR2 = GREEN_MAX_BRIGHTNESS;
-            else    TIM3->CCR2 = GREEN_MIN_BRIGHTNESS;
+            if(TIM3->CCR2 < GREEN_START_BRIGHTNESS) {  
+                TIM3->CCR2 = GREEN_MAX_BRIGHTNESS;
+                push_back(&c, "GREEN ACTIVATED\r\n");
+            }
+            else  {  
+                TIM3->CCR2 = GREEN_MIN_BRIGHTNESS;
+                push_back(&c, "GREEN DEACTIVATED\r\n");
+            }
+            check_if_available();
             break;
 
         case UP_VOLUME_BUTTON:
             current_brightness = TIM3->CCR1;
             if(current_brightness <= 989)   current_brightness += 10;
             TIM3->CCR1 = current_brightness;
+            push_back(&c, "RED UP\r\n");
+            check_if_available();
             break;
 
         case DOWN_VOLUME_BUTTON:
             current_brightness = TIM3->CCR1;
             if(current_brightness >= 10)    current_brightness -= 10;
             TIM3->CCR1 = current_brightness;
+            push_back(&c, "RED DOWN\r\n");
+            check_if_available();
             break;
         
         case UP_CHANNEL_BUTTON:
             current_brightness = TIM3->CCR2;
             if(current_brightness <= 989)   current_brightness += 10;
             TIM3->CCR2 = current_brightness;
+            push_back(&c, "GREEN UP\r\n");
+            check_if_available();
             break;
         
         case DOWN_CHANNEL_BUTTON:
             current_brightness = TIM3->CCR2;
             if(current_brightness >= 10)    current_brightness -= 10;
             TIM3->CCR2 = current_brightness;
+            push_back(&c, "GREEN DOWN\r\n");
+            check_if_available();
             break;
 
         case UP_BUTTON:
             current_brightness = TIM3->CCR3;
             if(current_brightness <= 989)   current_brightness += 10;
             TIM3->CCR3 = current_brightness;
+            push_back(&c, "BLUE UP\r\n");
+            check_if_available();
             break;
 
         case DOWN_BUTTON:
             current_brightness = TIM3->CCR3;
             if(current_brightness >= 10)    current_brightness -= 10;
             TIM3->CCR3 = current_brightness;
+            push_back(&c, "BLUE DOWN\r\n");
+            check_if_available();
             break;
 
         default:
