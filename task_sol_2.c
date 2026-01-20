@@ -3,11 +3,6 @@
 #include <stm32.h>
 #include <stdbool.h>
 
-//  odbiór odporny na zakłócenia -> Chodzi o to aby działało i aby faktycznie te sygnały były odbierane.
-//  do zakończenia zadania zostało mi de facto zrobienie aby można było regulować kolor diody przez guziki na pilocie poprzez PWM.
-
-// http://nic.vajn.icu/PDF/STMicro/ARM/STM32F0/STM32F0xx_IR_remote.pdf
-
 // ------------------ PILOT ------------------
 // Wartości w systemie dziesiętnym.
 // ------------------ NUMERY GUZIKÓW ------------------
@@ -61,7 +56,7 @@
 #define ONE_MILISECOND_TIMER 15999
 #define TEN_MICROSECONDS_TIMER 159
 #define NINETY_MILISECONDS_ARR 90
-#define ONE_SECOND 250
+#define SECOND_QUARTER 250
 // ------------------ Diody ------------------
 
 #define RED_LED_GPIO GPIOA
@@ -254,6 +249,13 @@ void unknown_command(cyclic_buffer* c) {
     push_back(c, "UNKNOWN COMMAND!\r\n");
 }
 
+char* encode_string(char* p, char* string) {
+    while(*string) {
+        *p++ = *string++;
+    }
+    return p;
+}
+
 char* decode_int_16(char *p, uint16_t v)
 {
     char tmp[6];
@@ -277,14 +279,13 @@ char* decode_int_16(char *p, uint16_t v)
 
 bool prevent_multiple_clicks(uint32_t last_command_time) {
     uint32_t difference = (uint32_t)(TIM2->CNT - last_command_time);
-    if(difference > ONE_SECOND) {
+    if(difference > SECOND_QUARTER) {
         return false;
     }
     return true;
 }
 
 void handle_command(uint8_t command, uint8_t last_command, uint32_t last_command_time) {
-
     switch (command) {
         uint16_t current_brightness;
         case ONE_BUTTON:
@@ -376,12 +377,12 @@ void process_SIRC_signal(uint8_t string_frame) {
     char tx_buf[32];
     char *p = tx_buf;
 
-    *p++ = 'C'; *p++ = 'M'; *p++ = 'D'; *p++ = '=';
+    p = encode_string(p, "CMD=");
     p = decode_int_16(p, command);
-    *p++ = ' ';
-    *p++ = 'A'; *p++ = 'D'; *p++ = 'D'; *p++ = 'R'; *p++ = '=';
+    p = encode_string(p, " ADDR=");
     p = decode_int_16(p, address);
-    *p++ = '\r'; *p++ = '\n'; *p = '\0';
+    p = encode_string(p, "\r\n");
+    *p = '\0';
     
     push_back(&c, tx_buf);
     check_if_available();
@@ -410,7 +411,7 @@ void reset_values() {
 
 void EXTI15_10_IRQHandler(void) {
     if(EXTI->PR & EXTI_PR_PR14) {
-        EXTI->PR = EXTI_PR_PR14; // Wyczyszczenie flagi przerwania
+        EXTI->PR = EXTI_PR_PR14; 
 
         // Przerwanie wywołane zboczem opadającym.
         if(!((RECEIVER_GPIO->IDR & (1 << RECEIVER_PIN)))) {
@@ -574,14 +575,13 @@ int main() {
 
     DMA1->HIFCR = DMA_HIFCR_CTCIF6 | DMA_HIFCR_CTCIF5;
 
-    // Zerujemy bity przerwań, które mogły się zapalić przy odpalaniu programu (ich stan nie jest znany).
     EXTI->PR = EXTI_PR_PR14;
 
     NVIC_EnableIRQ(DMA1_Stream6_IRQn);
     NVIC_EnableIRQ(DMA1_Stream5_IRQn);
     NVIC_EnableIRQ(EXTI15_10_IRQn);
 
-    USART2->CR1 |= USART_Enable;        // włączenie UARTU na koniec.
+    USART2->CR1 |= USART_Enable;        
 
  
     TIM4->PSC = TEN_MICROSECONDS_TIMER; // 159 -> 16MHz/160 = 100kHz (1 cykl = 10us)
